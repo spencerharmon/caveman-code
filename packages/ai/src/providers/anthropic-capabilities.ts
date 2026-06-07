@@ -176,4 +176,33 @@ export function supportsAdaptiveThinking(modelId: string, provider?: string): bo
 	return getAnthropicCapabilities(modelId, provider).thinkingSchema === "adaptive";
 }
 
+/**
+ * Opus 4.7+ (incl. 4.8 and future majors) flips the API default for the
+ * adaptive thinking `display` field to "omitted", which causes the model
+ * to emit thinking content blocks whose `thinking` text is empty and whose
+ * only payload is the `thinkingSignature` (signature_delta). Older adaptive
+ * models (Opus 4.6, Sonnet 4.6) default to "summarized" and stream real
+ * cleartext via thinking_delta events.
+ *
+ * To get visible reasoning on Opus 4.7+ we must explicitly request
+ * `display: "summarized"` on every adaptive thinking request, regardless of
+ * relay (direct Anthropic, Bedrock, Vertex, GitHub Copilot). This mirrors
+ * opencode's `anthropicOpus47OrLater` handling.
+ *
+ * The id regex matches both Anthropic/Bedrock/Vertex layouts
+ * (`claude-opus-4-7`, `claude-opus-4.7-1m-internal`, `anthropic.claude-opus-4-7`)
+ * and the inverted SAP AI Core layout (`claude-4.7-opus`). The greedy `\d+`
+ * extends to multi-digit majors for forward compatibility.
+ */
+const ANTHROPIC_OPUS_VERSION_RE = /opus-(\d+)[.-](\d+)(?:[.@_-]|$)|claude-(\d+)[.-](\d+)-opus(?:[.@_-]|$)/i;
+
+export function isAdaptiveDisplayOmittedDefault(modelId: string): boolean {
+	const m = ANTHROPIC_OPUS_VERSION_RE.exec(modelId);
+	if (!m) return false;
+	const major = Number(m[1] ?? m[3]);
+	const minor = Number(m[2] ?? m[4]);
+	if (!Number.isFinite(major) || !Number.isFinite(minor)) return false;
+	return major > 4 || (major === 4 && minor >= 7);
+}
+
 export const CONTEXT_1M_BETA_HEADER = CONTEXT_1M_BETA;

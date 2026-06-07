@@ -158,10 +158,13 @@ describe("discovery cache override", () => {
 // ============================================================================
 
 describe("Anthropic thinking request shape", () => {
-	it("opus-4-7 sends adaptive thinking + output_config.effort, no budget_tokens", async () => {
+	it("opus-4-7 sends adaptive thinking + output_config.effort + display=summarized, no budget_tokens", async () => {
 		_clearDiscoveredCapabilitiesForTests();
 		const { params } = await runWith(getModel("anthropic", "claude-opus-4-7"), "medium");
-		expect(params.thinking).toEqual({ type: "adaptive" });
+		// Opus 4.7+ flipped the relay default for `display` to "omitted", which
+		// silently strips cleartext thinking. Force display="summarized" so the
+		// server streams real thinking_delta payloads. Mirrors opencode's fix.
+		expect(params.thinking).toEqual({ type: "adaptive", display: "summarized" });
 		expect(params.output_config).toEqual({ effort: "medium" });
 		expect(params.thinking).not.toHaveProperty("budget_tokens");
 	});

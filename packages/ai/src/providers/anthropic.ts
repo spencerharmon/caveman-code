@@ -28,7 +28,11 @@ import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 
-import { getAnthropicCapabilities, supportsAdaptiveThinking } from "./anthropic-capabilities.js";
+import {
+	getAnthropicCapabilities,
+	isAdaptiveDisplayOmittedDefault,
+	supportsAdaptiveThinking,
+} from "./anthropic-capabilities.js";
 import { discoverAnthropicCapabilities } from "./anthropic-discovery.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
 import { adjustMaxTokensForThinking, buildBaseOptions } from "./simple-options.js";
@@ -670,8 +674,19 @@ function buildParams(
 	if (model.reasoning) {
 		if (options?.thinkingEnabled) {
 			if (supportsAdaptiveThinking(model.id, model.provider)) {
-				// Adaptive thinking: Claude decides when and how much to think
-				params.thinking = { type: "adaptive" };
+				// Adaptive thinking: Claude decides when and how much to think.
+				//
+				// Opus 4.7+ flips the API default for `display` to "omitted",
+				// which causes the relay (incl. GitHub Copilot's Anthropic shim)
+				// to emit thinking content blocks whose `thinking` text is empty
+				// and whose only payload is `signature_delta`. Force
+				// `display: "summarized"` on every adaptive request for these
+				// models so cleartext reasoning streams via `thinking_delta`
+				// just like Opus 4.6 / Sonnet 4.6. Mirrors opencode's behavior.
+				const forceSummarizedDisplay = isAdaptiveDisplayOmittedDefault(model.id);
+				params.thinking = forceSummarizedDisplay
+					? ({ type: "adaptive", display: "summarized" } as unknown as MessageCreateParamsStreaming["thinking"])
+					: { type: "adaptive" };
 				if (options.effort) {
 					params.output_config = { effort: options.effort };
 				}
