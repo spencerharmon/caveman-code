@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added opt-in compact RPC event mode to reduce repeated streaming message and tool update payloads.
+
 ### Fixed
 
 - Fixed initial model resolution falling back to a different model when the user's saved default isn't in the static registry (e.g. discovered-only Copilot ids). `createAgentSession` and the session-services factory now await Anthropic capability discovery before resolving the initial model if the saved default is missing from the snapshot, so the correct `contextWindow` is used from the first turn instead of silently degrading to a smaller-window sibling and over-compacting.

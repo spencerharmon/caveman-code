@@ -182,12 +182,32 @@ Response:
     "sessionName": "my-feature-work",
     "autoCompactionEnabled": true,
     "messageCount": 5,
-    "pendingMessageCount": 0
+    "pendingMessageCount": 0,
+    "eventMode": "full"
   }
 }
 ```
 
 The `model` field is a full [Model](#model) object or `null`. The `sessionName` field is the display name set via `set_session_name`, or omitted if not set.
+
+#### set_event_mode
+
+Set RPC event payload mode.
+
+```json
+{"type": "set_event_mode", "mode": "compact"}
+```
+
+Modes:
+- `"full"` (default): preserve existing event payloads.
+- `"compact"`: reduce high-volume event payloads. `message_update` carries only the assistant delta event, without repeated full partial messages. `tool_execution_update` carries `partialResultDelta` for single text-result updates. `turn_end` and `agent_end` carry counts/status instead of duplicating full messages already streamed through earlier events.
+
+Response:
+```json
+{"type": "response", "command": "set_event_mode", "success": true}
+```
+
+Compact mode changes event shapes. Use only with clients that explicitly handle compact events.
 
 #### get_messages
 
@@ -778,7 +798,7 @@ Emitted when a message begins and completes. The `message` field contains an `Ag
 
 ### message_update (Streaming)
 
-Emitted during streaming of assistant messages. Contains both the partial message and a streaming delta event.
+Emitted during streaming of assistant messages. In full event mode, contains both the partial message and a streaming delta event.
 
 ```json
 {
@@ -810,12 +830,20 @@ The `assistantMessageEvent` field contains one of these delta types:
 | `done` | Message complete (reason: `"stop"`, `"length"`, `"toolUse"`) |
 | `error` | Error occurred (reason: `"aborted"`, `"error"`) |
 
-Example streaming a text response:
+Example streaming a text response in full mode:
 ```json
 {"type":"message_update","message":{...},"assistantMessageEvent":{"type":"text_start","contentIndex":0,"partial":{...}}}
 {"type":"message_update","message":{...},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Hello","partial":{...}}}
 {"type":"message_update","message":{...},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":" world","partial":{...}}}
 {"type":"message_update","message":{...},"assistantMessageEvent":{"type":"text_end","contentIndex":0,"content":"Hello world","partial":{...}}}
+```
+
+Example in compact mode:
+```json
+{"type":"message_update","assistantMessageEvent":{"type":"text_start","contentIndex":0}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Hello"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":" world"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_end","contentIndex":0}}
 ```
 
 ### tool_execution_start / tool_execution_update / tool_execution_end
@@ -861,7 +889,24 @@ When complete:
 }
 ```
 
-Use `toolCallId` to correlate events. The `partialResult` in `tool_execution_update` contains the accumulated output so far (not just the delta), allowing clients to simply replace their display on each update.
+Use `toolCallId` to correlate events. In full mode, `partialResult` in `tool_execution_update` contains the accumulated output so far (not just the delta), allowing clients to replace their display on each update.
+
+In compact mode, single text-result updates use `partialResultDelta` instead:
+
+```json
+{
+  "type": "tool_execution_update",
+  "toolCallId": "call_abc123",
+  "toolName": "bash",
+  "args": {"command": "ls -la"},
+  "partialResultDelta": {
+    "content": [{"type": "text", "text": "new output chunk"}],
+    "details": {"truncation": null, "fullOutputPath": null}
+  }
+}
+```
+
+If compact mode cannot compute an append-only delta for a tool update, `partialResultDelta.resync` is `true` and `content[0].text` contains the current full display text for that update.
 
 ### queue_update
 
