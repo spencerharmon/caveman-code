@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added opt-in compact RPC event mode to reduce repeated streaming message and tool update payloads.
+
 ### Fixed
 
 - Added missing `@sinclair/typebox` runtime dependency. Fixes `ERR_MODULE_NOT_FOUND` on `caveman-code` startup when installed globally ([#6](https://github.com/JuliusBrussee/caveman-code/issues/6)).

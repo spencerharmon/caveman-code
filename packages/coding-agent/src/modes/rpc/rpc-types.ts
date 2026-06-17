@@ -7,7 +7,7 @@
 
 import type { AgentMessage, ThinkingLevel } from "@juliusbrussee/caveman-agent";
 import type { ImageContent, Model } from "@juliusbrussee/caveman-ai";
-import type { SessionStats } from "../../core/agent-session.js";
+import type { AgentSessionEvent, SessionStats } from "../../core/agent-session.js";
 import type { BashResult } from "../../core/bash-executor.js";
 import type { CompactionResult } from "../../core/compaction/index.js";
 import type { SourceInfo } from "../../core/source-info.js";
@@ -26,6 +26,7 @@ export type RpcCommand =
 
 	// State
 	| { id?: string; type: "get_state" }
+	| { id?: string; type: "set_event_mode"; mode: RpcEventMode }
 
 	// Model
 	| { id?: string; type: "set_model"; provider: string; modelId: string }
@@ -87,6 +88,8 @@ export interface RpcSlashCommand {
 // RPC State
 // ============================================================================
 
+export type RpcEventMode = "full" | "compact";
+
 export interface RpcSessionState {
 	model?: Model<any>;
 	thinkingLevel: ThinkingLevel;
@@ -100,6 +103,7 @@ export interface RpcSessionState {
 	autoCompactionEnabled: boolean;
 	messageCount: number;
 	pendingMessageCount: number;
+	eventMode: RpcEventMode;
 }
 
 // ============================================================================
@@ -117,6 +121,7 @@ export type RpcResponse =
 
 	// State
 	| { id?: string; type: "response"; command: "get_state"; success: true; data: RpcSessionState }
+	| { id?: string; type: "response"; command: "set_event_mode"; success: true }
 
 	// Model
 	| {
@@ -202,6 +207,42 @@ export type RpcResponse =
 
 	// Error response (any command can fail)
 	| { id?: string; type: "response"; command: string; success: false; error: string };
+
+// ============================================================================
+// RPC Events (stdout)
+// ============================================================================
+
+export type RpcCompactAssistantMessageEvent =
+	| { type: "text_start"; contentIndex: number }
+	| { type: "text_delta"; contentIndex: number; delta: string }
+	| { type: "text_end"; contentIndex: number }
+	| { type: "thinking_start"; contentIndex: number }
+	| { type: "thinking_delta"; contentIndex: number; delta: string }
+	| { type: "thinking_end"; contentIndex: number }
+	| { type: "toolcall_start"; contentIndex: number }
+	| { type: "toolcall_delta"; contentIndex: number; delta: string }
+	| { type: "toolcall_end"; contentIndex: number; toolCall: unknown };
+
+export interface RpcCompactToolResultDelta {
+	content: Array<{ type: "text"; text: string }>;
+	details?: unknown;
+	resync?: true;
+}
+
+export type RpcCompactAgentEvent =
+	| { type: "message_update"; assistantMessageEvent: RpcCompactAssistantMessageEvent }
+	| {
+			type: "tool_execution_update";
+			toolCallId: string;
+			toolName: string;
+			args: unknown;
+			partialResultDelta?: RpcCompactToolResultDelta;
+			partialResult?: unknown;
+	  }
+	| { type: "turn_end"; toolResultCount: number; messageRole?: string; stopReason?: string }
+	| { type: "agent_end"; messageCount: number };
+
+export type RpcEvent = AgentSessionEvent | RpcCompactAgentEvent | RpcExtensionUIRequest;
 
 // ============================================================================
 // Extension UI Events (stdout)

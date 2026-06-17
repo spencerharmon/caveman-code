@@ -21,8 +21,10 @@ import type {
 import { takeOverStdout, writeRawStdout } from "../../core/output-guard.js";
 import { type Theme, theme } from "../interactive/theme/theme.js";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.js";
+import { createRpcEventTransformer } from "./rpc-event-mode.js";
 import type {
 	RpcCommand,
+	RpcEventMode,
 	RpcExtensionUIRequest,
 	RpcExtensionUIResponse,
 	RpcResponse,
@@ -47,9 +49,15 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 	takeOverStdout();
 	let session = runtimeHost.session;
 	let unsubscribe: (() => void) | undefined;
+	let eventMode: RpcEventMode = "full";
+	const transformEvent = createRpcEventTransformer(() => eventMode);
 
 	const output = (obj: RpcResponse | RpcExtensionUIRequest | object) => {
 		writeRawStdout(serializeJsonLine(obj));
+	};
+
+	const outputEvent = (event: object) => {
+		output(transformEvent(event));
 	};
 
 	const success = <T extends RpcCommand["type"]>(
@@ -332,7 +340,7 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 
 		unsubscribe?.();
 		unsubscribe = session.subscribe((event) => {
-			output(event);
+			outputEvent(event);
 		});
 	};
 
@@ -403,8 +411,17 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 					autoCompactionEnabled: session.autoCompactionEnabled,
 					messageCount: session.messages.length,
 					pendingMessageCount: session.pendingMessageCount,
+					eventMode,
 				};
 				return success(id, "get_state", state);
+			}
+
+			case "set_event_mode": {
+				if (command.mode !== "full" && command.mode !== "compact") {
+					return error(id, "set_event_mode", `Invalid event mode: ${String(command.mode)}`);
+				}
+				eventMode = command.mode;
+				return success(id, "set_event_mode");
 			}
 
 			// =================================================================

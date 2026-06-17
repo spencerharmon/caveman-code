@@ -5,13 +5,13 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import type { AgentEvent, AgentMessage, ThinkingLevel } from "@juliusbrussee/caveman-agent";
+import type { AgentMessage, ThinkingLevel } from "@juliusbrussee/caveman-agent";
 import type { ImageContent } from "@juliusbrussee/caveman-ai";
 import type { SessionStats } from "../../core/agent-session.js";
 import type { BashResult } from "../../core/bash-executor.js";
 import type { CompactionResult } from "../../core/compaction/index.js";
 import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.js";
-import type { RpcCommand, RpcResponse, RpcSessionState, RpcSlashCommand } from "./rpc-types.js";
+import type { RpcCommand, RpcEvent, RpcEventMode, RpcResponse, RpcSessionState, RpcSlashCommand } from "./rpc-types.js";
 
 // ============================================================================
 // Types
@@ -45,7 +45,7 @@ export interface ModelInfo {
 	reasoning: boolean;
 }
 
-export type RpcEventListener = (event: AgentEvent) => void;
+export type RpcEventListener = (event: RpcEvent) => void;
 
 // ============================================================================
 // RPC Client
@@ -205,6 +205,13 @@ export class RpcClient {
 	async getState(): Promise<RpcSessionState> {
 		const response = await this.send({ type: "get_state" });
 		return this.getData(response);
+	}
+
+	/**
+	 * Set RPC event mode. Compact mode emits smaller streaming events.
+	 */
+	async setEventMode(mode: RpcEventMode): Promise<void> {
+		await this.send({ type: "set_event_mode", mode });
 	}
 
 	/**
@@ -409,9 +416,9 @@ export class RpcClient {
 	/**
 	 * Collect events until agent becomes idle.
 	 */
-	collectEvents(timeout = 60000): Promise<AgentEvent[]> {
+	collectEvents(timeout = 60000): Promise<RpcEvent[]> {
 		return new Promise((resolve, reject) => {
-			const events: AgentEvent[] = [];
+			const events: RpcEvent[] = [];
 			const timer = setTimeout(() => {
 				unsubscribe();
 				reject(new Error(`Timeout collecting events. Stderr: ${this.stderr}`));
@@ -431,7 +438,7 @@ export class RpcClient {
 	/**
 	 * Send prompt and wait for completion, returning all events.
 	 */
-	async promptAndWait(message: string, images?: ImageContent[], timeout = 60000): Promise<AgentEvent[]> {
+	async promptAndWait(message: string, images?: ImageContent[], timeout = 60000): Promise<RpcEvent[]> {
 		const eventsPromise = this.collectEvents(timeout);
 		await this.prompt(message, images);
 		return eventsPromise;
@@ -455,7 +462,7 @@ export class RpcClient {
 
 			// Otherwise it's an event
 			for (const listener of this.eventListeners) {
-				listener(data as AgentEvent);
+				listener(data as RpcEvent);
 			}
 		} catch {
 			// Ignore non-JSON lines
