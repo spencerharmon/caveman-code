@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Fixed stdout/stderr write-stream failures from embedded terminal hosts, including Node's `errno -122` case, crashing Caveman Code with an unhandled `WriteStream` error.
 - Fixed initial model resolution falling back to a different model when the user's saved default isn't in the static registry (e.g. discovered-only Copilot ids). `createAgentSession` and the session-services factory now await Anthropic capability discovery before resolving the initial model if the saved default is missing from the snapshot, so the correct `contextWindow` is used from the first turn instead of silently degrading to a smaller-window sibling and over-compacting.
 - Added missing `@sinclair/typebox` runtime dependency. Fixes `ERR_MODULE_NOT_FOUND` on `caveman-code` startup when installed globally ([#6](https://github.com/JuliusBrussee/caveman-code/issues/6)).
 - Fixed broken extensions-migration links in the hooks-folder warning — now point to `JuliusBrussee/caveman-code` instead of the renamed-away `caveman-cli` repo ([#8](https://github.com/JuliusBrussee/caveman-code/issues/8)).
